@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Exclui o DataStore de configurações (temas, cor de destaque, equalizador
+    etc) do backup automático do Android. Sem isso, ao reinstalar o app (ou
+    trocar de aparelho), o Android restaura automaticamente as preferências
+    antigas por cima — inclusive configurações de tema que não existem mais
+    no app atual (como o gradiente "Rosé", removido numa atualização), o que
+    trazia de volta cores erradas mesmo depois de o app já ter corrigido isso
+    no código. Excluindo esse arquivo, uma reinstalação sempre começa do
+    zero de verdade, com os valores padrão atuais do app.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/harmonic_settings.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/harmonic_settings.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

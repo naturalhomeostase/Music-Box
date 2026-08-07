@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Music Box</string>
+    <string name="notification_channel_playback">Reprodução</string>
+    <!-- Usada internamente por uma dependência (Glance) num recurso de
+         pré-visualização/promessa de widget - precisa existir mesmo que o
+         app não a mostre em lugar nenhum diretamente. -->
+    <string name="widget_promises_description">Widget do Music Box — controle rápido de reprodução na tela inicial.</string>
+    <string name="widget_small_description">Music Box — pequeno (capa + play/pause)</string>
+    <string name="widget_medium_description">Music Box — médio (capa, título e controles)</string>
+    <string name="widget_large_description">Music Box — grande (capa em destaque)</string>
+</resources>

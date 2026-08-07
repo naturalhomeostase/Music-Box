@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Fundo do widget: topo 100% transparente (deixa o papel de parede do
+    sistema aparecer por trás, com o nome da música "flutuando" sobre ele) e
+    vai escurecendo suavemente até a base, só o suficiente pra dar contraste
+    pros botões físicos ficarem legíveis e destacados.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="24dp" />
+    <gradient
+        android:type="linear"
+        android:angle="270"
+        android:startColor="#00000000"
+        android:centerColor="#2E000000"
+        android:endColor="#8C000000" />
+</shape>
