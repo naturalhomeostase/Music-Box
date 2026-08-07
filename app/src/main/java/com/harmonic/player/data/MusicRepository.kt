@@ -22,6 +22,16 @@ class MusicRepository(
 ) {
     private var observingStarted = false
 
+    /**
+     * Fica `true` assim que o primeiro escaneamento que realmente encontrou
+     * alguma música termina. Usado pelo `MainActivity.onResume()` como
+     * critério de "ainda vale a pena tentar de novo" — depois da primeira
+     * vez, não precisa mais forçar rescans a cada volta ao app.
+     */
+    @Volatile
+    var hasScannedSuccessfully: Boolean = false
+        private set
+
     // O escaneamento inicial (disparado no Application.onCreate) e os
     // escaneamentos reativos (disparados por mudanças no MediaStore — ex:
     // o próprio MediaScannerConnection.scanFile chamado depois de editar
@@ -61,6 +71,7 @@ class MusicRepository(
         val ignored = settings.ignoredFolders.first()
         val scanned = scanner.scan(ignoredFolders = ignored)
         if (scanned.isEmpty()) return // provavelmente sem permissão ainda; não apaga nada do banco
+        hasScannedSuccessfully = true
 
         // Mescla com o que já existe: preserva favoritos, contagem de
         // reproduções, última vez tocada e posição salva — sem isso, cada
