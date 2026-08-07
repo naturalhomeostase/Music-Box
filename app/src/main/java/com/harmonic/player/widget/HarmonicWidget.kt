@@ -1,5 +1,6 @@
 package com.harmonic.player.widget
 
+import android.content.ComponentName
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -27,6 +28,7 @@ import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.defaultWeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -38,10 +40,16 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.MoreExecutors
 import com.harmonic.player.MainActivity
 import com.harmonic.player.R
+import com.harmonic.player.playback.PlaybackService
 import com.harmonic.player.playback.PlaybackServiceHolder
 import com.harmonic.player.playback.WidgetPlaybackState
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /**
  * Três tamanhos de widget (pequeno/médio/grande), pra aparecerem como
@@ -50,15 +58,16 @@ import com.harmonic.player.playback.WidgetPlaybackState
  * ficar bom. Os três compartilham a mesma lógica de estado/desenho
  * ([WidgetChrome]); só o tamanho e a quantidade de informação mudam.
  *
- * Fundo: a capa da música (quando disponível) preenche o widget inteiro,
- * com um degradê escuro por cima só o suficiente pra manter texto/botões
- * legíveis — sem capa (nada tocando, ou música sem capa), cai num fundo
- * simples na cor de destaque do app, nunca uma caixa cinza vazia.
+ * Fundo: no widget pequeno, a capa da música preenche o espaço inteiro
+ * (funciona bem nesse tamanho mínimo, sem espaço pra texto de qualquer
+ * jeito); sem capa, cai num fundo simples na cor de destaque do app. Médio e
+ * grande usam um cartão escuro sólido, sempre consistente, com a capa
+ * aparecendo como uma miniatura de verdade ao lado do texto — em vez de um
+ * recorte de fundo esticado, que ficava bem inconsistente dependendo da
+ * proporção da capa.
  *
- * Médio e grande agora são bem mais HORIZONTAIS (barra curta e cartão
- * largo, respectivamente) em vez de quase quadrados — o conteúdo dentro
- * deles também virou uma Row (texto de um lado, controles do outro) pra
- * caber direito nesse formato mais baixo.
+ * Médio e grande são bem mais HORIZONTAIS (barra curta e cartão largo,
+ * respectivamente) em vez de quase quadrados.
  *
  * Os botões deixaram de simular um relevo 3D (gradiente + brilho + sombra
  * falsos, um estilo datado) e agora são círculos chapados — translúcidos
@@ -97,32 +106,77 @@ class HarmonicWidgetLarge : GlanceAppWidget() {
 private fun WidgetChrome(size: WidgetSize) {
     val state = PlaybackServiceHolder.state.value
     val white = ColorProvider(Color.White)
-    val gray = ColorProvider(Color(0xFFE0E0E0))
+    val gray = ColorProvider(Color(0xFFB8B4BE))
     val accent = ColorProvider(Color(0xFFE0A030))
+    // Fundo em cartão sólido, sempre igual não importa a capa da música —
+    // antes o fundo era a própria capa esticada preenchendo o widget
+    // inteiro, o que ficava ótimo com algumas capas e uma bagunça
+    // borrada/cortada estranho com outras (capas quadradas pequenas
+    // esticadas num widget bem retangular, por exemplo). Um cartão escuro
+    // consistente, com a capa aparecendo como uma miniatura de verdade (ver
+    // [AlbumThumb]), fica previsível e "intencional" em qualquer capa.
+    val cardBg = ColorProvider(Color(0xFF19171D))
 
     Box(modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp)) {
-        // Camada 1: capa (ou um fundo sólido na cor de destaque quando não há).
+        when (size) {
+            // Pequeno continua sendo a capa preenchendo tudo, com o botão
+            // de play/pause flutuando por cima — nesse tamanho mínimo (1
+            // célula) isso funciona bem, é basicamente "a capa do álbum
+            // com um botão", sem espaço sobrando pra texto de qualquer jeito.
+            WidgetSize.SMALL -> {
+                if (state.coverBitmap != null) {
+                    Image(
+                        provider = ImageProvider(state.coverBitmap),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = GlanceModifier.fillMaxSize()
+                    )
+                } else {
+                    Box(modifier = GlanceModifier.fillMaxSize().background(accent)) {}
+                }
+                Box(modifier = GlanceModifier.fillMaxSize().background(ImageProvider(R.drawable.widget_bg_gradient))) {}
+                SmallContent(state, white)
+            }
+            WidgetSize.MEDIUM -> {
+                Box(modifier = GlanceModifier.fillMaxSize().background(cardBg)) {}
+                MediumContent(state, white, gray, accent)
+            }
+            WidgetSize.LARGE -> {
+                Box(modifier = GlanceModifier.fillMaxSize().background(cardBg)) {}
+                LargeContent(state, white, gray, accent)
+            }
+        }
+    }
+}
+
+/**
+ * Miniatura quadrada de verdade da capa (não mais um recorte esticado de
+ * fundo) — cantos arredondados proporcionais ao tamanho, e quando não há
+ * capa (música sem imagem embutida, ou nada tocando ainda), mostra a nota
+ * musical em vez de deixar um quadrado vazio/cinza sem explicação.
+ */
+@Composable
+private fun AlbumThumb(state: WidgetPlaybackState, accent: ColorProvider, size: Dp) {
+    Box(
+        modifier = GlanceModifier
+            .size(size)
+            .cornerRadius(size / 4)
+            .background(accent),
+        contentAlignment = Alignment.Center
+    ) {
         if (state.coverBitmap != null) {
             Image(
                 provider = ImageProvider(state.coverBitmap),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = GlanceModifier.fillMaxSize()
+                modifier = GlanceModifier.fillMaxSize().cornerRadius(size / 4)
             )
         } else {
-            Box(modifier = GlanceModifier.fillMaxSize().background(accent)) {}
-        }
-        // Camada 2: degradê escuro por cima, só pra dar contraste ao texto/botões.
-        Box(
-            modifier = GlanceModifier
-                .fillMaxSize()
-                .background(ImageProvider(R.drawable.widget_bg_gradient))
-        ) {}
-        // Camada 3: conteúdo de verdade.
-        when (size) {
-            WidgetSize.SMALL -> SmallContent(state, white)
-            WidgetSize.MEDIUM -> MediumContent(state, white, gray)
-            WidgetSize.LARGE -> LargeContent(state, white, gray)
+            Image(
+                provider = ImageProvider(R.drawable.ic_widget_note_placeholder),
+                contentDescription = null,
+                modifier = GlanceModifier.size(size / 2)
+            )
         }
     }
 }
@@ -147,20 +201,21 @@ private fun SmallContent(state: WidgetPlaybackState, white: ColorProvider) {
 }
 
 /**
- * Barra horizontal curta: título/artista de um lado, controles compactos do
- * outro, tudo numa linha só — cabe no formato mais baixo (4x1) que o widget
- * médio ganhou. Antes era uma Column empilhada (texto em cima, botões
- * embaixo) pensada pro tamanho antigo, quase quadrado.
+ * Barra horizontal curta: miniatura da capa, título/artista ao lado,
+ * controles compactos na ponta — tudo numa linha só, cabendo no formato
+ * mais baixo (4x1) que o widget médio ganhou.
  */
 @Composable
-private fun MediumContent(state: WidgetPlaybackState, white: ColorProvider, gray: ColorProvider) {
+private fun MediumContent(state: WidgetPlaybackState, white: ColorProvider, gray: ColorProvider, accent: ColorProvider) {
     Row(
-        modifier = GlanceModifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp),
+        modifier = GlanceModifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        AlbumThumb(state, accent, 40.dp)
+        Spacer(modifier = GlanceModifier.width(10.dp))
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
-                text = state.title ?: "Music Box",
+                text = state.title ?: "Harmonic",
                 style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = white),
                 maxLines = 1,
                 modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity<MainActivity>())
@@ -172,7 +227,7 @@ private fun MediumContent(state: WidgetPlaybackState, white: ColorProvider, gray
                 modifier = GlanceModifier.fillMaxWidth()
             )
         }
-        Spacer(modifier = GlanceModifier.width(10.dp))
+        Spacer(modifier = GlanceModifier.width(8.dp))
         WidgetIconButton(R.drawable.ic_widget_previous, 32.dp, 15.dp, R.drawable.widget_button_secondary_selector, actionRunCallback<PreviousAction>())
         Spacer(modifier = GlanceModifier.width(8.dp))
         WidgetIconButton(
@@ -184,39 +239,44 @@ private fun MediumContent(state: WidgetPlaybackState, white: ColorProvider, gray
     }
 }
 
-/** Cartão horizontal maior: mesma ideia do médio, com mais espaço pra capa/texto respirarem e botões maiores. */
+/**
+ * Cartão horizontal maior: capa grande à esquerda, título/artista e
+ * controles empilhados à direita — layout em "L" bem mais parecido com um
+ * cartão de álbum de verdade do que texto+botões soltos sobre um recorte de
+ * fundo.
+ */
 @Composable
-private fun LargeContent(state: WidgetPlaybackState, white: ColorProvider, gray: ColorProvider) {
-    Column(
-        modifier = GlanceModifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 12.dp),
+private fun LargeContent(state: WidgetPlaybackState, white: ColorProvider, gray: ColorProvider, accent: ColorProvider) {
+    Row(
+        modifier = GlanceModifier.fillMaxSize().padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = state.title ?: "Music Box",
-            style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp, color = white),
-            maxLines = 1,
-            modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity<MainActivity>())
-        )
-        Text(
-            text = state.artist ?: if (state.hasQueue) "" else "Nenhuma música tocando",
-            style = TextStyle(fontSize = 14.sp, color = gray),
-            maxLines = 1,
-            modifier = GlanceModifier.fillMaxWidth()
-        )
-        Spacer(modifier = GlanceModifier.height(10.dp))
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            WidgetIconButton(R.drawable.ic_widget_previous, 44.dp, 20.dp, R.drawable.widget_button_secondary_selector, actionRunCallback<PreviousAction>())
-            Spacer(modifier = GlanceModifier.width(18.dp))
-            WidgetIconButton(
-                if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
-                56.dp, 24.dp, R.drawable.widget_button_primary_selector, actionRunCallback<PlayPauseAction>()
+        AlbumThumb(state, accent, 88.dp)
+        Spacer(modifier = GlanceModifier.width(16.dp))
+        Column(modifier = GlanceModifier.defaultWeight()) {
+            Text(
+                text = state.title ?: "Harmonic",
+                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 17.sp, color = white),
+                maxLines = 1,
+                modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity<MainActivity>())
             )
-            Spacer(modifier = GlanceModifier.width(18.dp))
-            WidgetIconButton(R.drawable.ic_widget_next, 44.dp, 20.dp, R.drawable.widget_button_secondary_selector, actionRunCallback<NextAction>())
+            Text(
+                text = state.artist ?: if (state.hasQueue) "" else "Nenhuma música tocando",
+                style = TextStyle(fontSize = 13.sp, color = gray),
+                maxLines = 1,
+                modifier = GlanceModifier.fillMaxWidth()
+            )
+            Spacer(modifier = GlanceModifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                WidgetIconButton(R.drawable.ic_widget_previous, 40.dp, 18.dp, R.drawable.widget_button_secondary_selector, actionRunCallback<PreviousAction>())
+                Spacer(modifier = GlanceModifier.width(14.dp))
+                WidgetIconButton(
+                    if (state.isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play,
+                    52.dp, 22.dp, R.drawable.widget_button_primary_selector, actionRunCallback<PlayPauseAction>()
+                )
+                Spacer(modifier = GlanceModifier.width(14.dp))
+                WidgetIconButton(R.drawable.ic_widget_next, 40.dp, 18.dp, R.drawable.widget_button_secondary_selector, actionRunCallback<NextAction>())
+            }
         }
     }
 }
@@ -250,27 +310,67 @@ private fun WidgetIconButton(
     }
 }
 
-class PlayPauseAction : ActionCallback {
-    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        PlaybackServiceHolder.togglePlayPause()
+/**
+ * Conecta um [MediaController] de verdade à sessão do [PlaybackService] pra
+ * executar o comando — em vez de mexer direto no [PlaybackServiceHolder]
+ * (um atalho em memória que só existe enquanto o processo do app está de
+ * pé). Esse era o motivo dos botões do widget "morrerem": assim que o
+ * Android encerra o processo em segundo plano (comum com a música pausada
+ * por um tempo, ou depois que o app sai da lista de recentes), aquele
+ * atalho ficava nulo e os toques não faziam nada.
+ *
+ * Conectar via [SessionToken] + [MediaController] é o mesmo caminho que o
+ * próprio app usa (ver [com.harmonic.player.playback.PlayerController]) —
+ * o Android sabe iniciar/religar o serviço sozinho quando um controller
+ * pede pra se conectar a ele, mesmo com o processo anterior já morto.
+ */
+private suspend fun withMediaController(context: Context, action: (MediaController) -> Unit) {
+    val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
+    val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+    try {
+        val controller = suspendCancellableCoroutine<MediaController> { cont ->
+            controllerFuture.addListener({
+                if (cont.isActive) {
+                    runCatching { controllerFuture.get() }
+                        .onSuccess { cont.resume(it) }
+                        .onFailure { cont.cancel(it) }
+                }
+            }, MoreExecutors.directExecutor())
+        }
+        action(controller)
+        // Empurra uma atualização otimista na hora — se o serviço já
+        // estava vivo (app tocando em segundo plano, por exemplo), o
+        // PlaybackServiceHolder já reflete o novo estado nesse instante e
+        // não precisamos esperar o listener do player disparar sozinho.
+        // Se o serviço acabou de "acordar" agora, essa chamada aqui pode
+        // não pegar o estado mais novo ainda — sem problema, porque o
+        // próprio PlaybackService (em onCreate/nos listeners do player) já
+        // se encarrega de atualizar os widgets assim que a fila salva for
+        // restaurada e a faixa carregar.
         PlaybackServiceHolder.refreshState()
         updateAllHarmonicWidgets(context)
+    } finally {
+        MediaController.releaseFuture(controllerFuture)
+    }
+}
+
+class PlayPauseAction : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        withMediaController(context) { controller ->
+            if (controller.isPlaying) controller.pause() else controller.play()
+        }
     }
 }
 
 class NextAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        PlaybackServiceHolder.skipNext()
-        PlaybackServiceHolder.refreshState()
-        updateAllHarmonicWidgets(context)
+        withMediaController(context) { controller -> controller.seekToNextMediaItem() }
     }
 }
 
 class PreviousAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        PlaybackServiceHolder.skipPrevious()
-        PlaybackServiceHolder.refreshState()
-        updateAllHarmonicWidgets(context)
+        withMediaController(context) { controller -> controller.seekToPreviousMediaItem() }
     }
 }
 

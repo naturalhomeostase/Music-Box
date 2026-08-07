@@ -11,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
+import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.tag.FieldKey
 import java.io.File
 
 /**
@@ -84,7 +86,21 @@ class MediaStoreScanner(private val context: Context) {
             album = getStringOrNull(MediaStore.Audio.Media.ALBUM) ?: "Álbum desconhecido",
             albumId = albumId,
             genre = getStringOrNull(MediaStore.Audio.Media.GENRE),
-            year = getIntOrNull(MediaStore.Audio.Media.YEAR)?.takeIf { it > 0 },
+            // O MediaStore usa o extrator de metadata do próprio Android pra
+            // preencher o campo YEAR, e esse extrator falha silenciosamente
+            // com uma certa frequência — sobretudo em tags ID3v2.4 (frame
+            // TDRC, que guarda data completa em vez de só o ano), tags
+            // ID3v1 antigas, ou FLAC/OGG com "DATE" em vez de "YEAR" no
+            // Vorbis Comment. Nesses casos ele nem sempre erra — às vezes
+            // simplesmente devolve null pro app inteiro, mesmo a música
+            // tendo uma tag de ano perfeitamente válida (foi o caso de uma
+            // música de 1962 que sumia da ordenação por ano). Por isso,
+            // só quando o MediaStore não devolve nada, lemos a tag direto
+            // do arquivo com jaudiotagger (mesma lib já usada em
+            // TagEditor) como fallback — mais lento, mas só roda pras
+            // poucas músicas que realmente precisam.
+            year = getIntOrNull(MediaStore.Audio.Media.YEAR)?.takeIf { it > 0 }
+                ?: readYearFromTagFallback(path),
             composer = getStringOrNull(MediaStore.Audio.Media.COMPOSER),
             trackNumber = getIntOrNull(MediaStore.Audio.Media.TRACK),
             durationMs = getLongOrNull(MediaStore.Audio.Media.DURATION) ?: 0,
@@ -98,6 +114,25 @@ class MediaStoreScanner(private val context: Context) {
             dateAdded = getLongOrNull(MediaStore.Audio.Media.DATE_ADDED) ?: 0,
             dateModified = getLongOrNull(MediaStore.Audio.Media.DATE_MODIFIED) ?: 0
         )
+    }
+
+    /**
+     * Fallback pro ano quando o MediaStore não conseguiu extrair (ver
+     * comentário em [toSong]). Lê a tag YEAR direto do arquivo — que pode
+     * vir como "1962", como uma data completa ("1962-05-12", "1962-05") ou,
+     * em tags ID3v1 bem antigas, só com 2 dígitos — por isso pegamos os
+     * primeiros 4 dígitos consecutivos que aparecerem no valor bruto, em
+     * vez de tentar `toIntOrNull()` direto na string inteira.
+     */
+    private fun readYearFromTagFallback(path: String): Int? {
+        return try {
+            val tag = AudioFileIO.read(File(path)).tag ?: return null
+            val raw = tag.getFirst(FieldKey.YEAR)?.trim().orEmpty()
+            if (raw.isEmpty()) return null
+            Regex("\\d{4}").find(raw)?.value?.toIntOrNull()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun albumArtUri(albumId: Long) =
