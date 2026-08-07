@@ -19,7 +19,6 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
-import androidx.glance.appwidget.updateAll
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
@@ -75,16 +74,6 @@ class PlaybackService : MediaLibraryService() {
 
         player.repeatMode = Player.REPEAT_MODE_OFF
 
-        // Registra o player no holder — é o que permite ao widget de tela
-        // inicial controlar a reprodução e mostrar o que está tocando.
-        PlaybackServiceHolder.attach(player)
-        // Empurra o estado pro widget assim que o serviço conecta o player,
-        // sem esperar o primeiro evento (troca de música, play/pause) —
-        // cobre o caso de o widget já estar na tela inicial ANTES do app
-        // rodar: sem isso, ele só se atualizava de verdade na primeira
-        // interação, ficando "parado" até lá.
-        updateWidget()
-
         val sessionCallback = PlaybackSessionCallback(this, serviceScope)
         // Quando o coração é tocado dentro do app (não na notificação), o
         // ícone da notificação precisa saber disso também — sem essa ponte,
@@ -95,7 +84,6 @@ class PlaybackService : MediaLibraryService() {
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                updateWidget()
                 // Reforça o valor atual da sessão de áudio a cada troca de
                 // play/pause — o listener de análise abaixo (que só reage
                 // quando o ID realmente MUDA) sozinho não estava sendo o
@@ -104,9 +92,7 @@ class PlaybackService : MediaLibraryService() {
                 // barata de chamar.
                 PlaybackAudioSession.update(player.audioSessionId)
             }
-            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) = updateWidget()
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                updateWidget()
                 sessionCallback.onSongChanged(mediaItem?.mediaId?.toLongOrNull())
                 PlaybackAudioSession.update(player.audioSessionId)
             }
@@ -202,48 +188,12 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         restoreJob?.cancel()
         PlaybackServiceHolder.setFavoriteChangeListener(null)
-        PlaybackServiceHolder.detach()
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
         super.onDestroy()
-    }
-
-    /**
-     * Atualiza o estado que os widgets leem e dispara o redesenho deles.
-     * Rodar isso a cada mudança de faixa/play-pause é barato — o Glance só
-     * recompõe de fato quando algo no estado realmente muda.
-     *
-     * A capa é buscada à parte, em segundo plano: é a parte "cara" (pode
-     * envolver ler o arquivo de áudio ou até baixar da internet), então os
-     * widgets já atualizam texto/ícone de play na hora, e a capa aparece
-     * assim que estiver pronta — sem travar a resposta do botão.
-     */
-    private fun updateWidget() {
-        PlaybackServiceHolder.refreshState()
-        val mediaId = PlaybackServiceHolder.state.value.currentMediaId
-        serviceScope.launch { updateAllWidgets() }
-
-        if (mediaId != null && PlaybackServiceHolder.state.value.coverBitmap == null) {
-            serviceScope.launch(Dispatchers.IO) {
-                val dao = (applicationContext as HarmonicApp).database.songDao()
-                val song = dao.getSongsByIds(listOf(mediaId)).firstOrNull()
-                // Tamanho pequeno (300px) — a capa no widget nunca aparece
-                // maior que uma tela cheia pequena, e um bitmap menor custa
-                // bem menos memória/bateria pra decodificar e desenhar.
-                val bitmap = song?.let { com.harmonic.player.data.AlbumArtLoader.load(applicationContext, it, sizePx = 300) }
-                PlaybackServiceHolder.updateCover(mediaId, bitmap)
-                updateAllWidgets()
-            }
-        }
-    }
-
-    private suspend fun updateAllWidgets() {
-        com.harmonic.player.widget.HarmonicWidgetSmall().updateAll(applicationContext)
-        com.harmonic.player.widget.HarmonicWidgetMedium().updateAll(applicationContext)
-        com.harmonic.player.widget.HarmonicWidgetLarge().updateAll(applicationContext)
     }
 }
 

@@ -155,8 +155,6 @@ dependencies {
     implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
     // Glance — widgets de tela inicial (Material You também nos widgets)
-    implementation("androidx.glance:glance-appwidget:1.1.0")
-    implementation("androidx.glance:glance-material3:1.1.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

@@ -120,50 +120,5 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Widgets de tela inicial: pequeno, médio e grande — cada um com
-             seu próprio receiver, pra aparecerem como opções separadas no
-             seletor de widgets do sistema em vez de um só genérico. -->
-        <!-- exported="true" é obrigatório aqui: os toques nos botões do
-             widget chegam como um broadcast explícito enviado pelo app do
-             launcher (um processo/UID diferente do nosso). Com
-             exported="false" esse broadcast era descartado pelo sistema
-             antes mesmo de chegar no Glance — por isso os botões (próxima,
-             play/pause, anterior) pareciam não fazer nada, e o widget
-             também deixava de receber corretamente os updates do sistema
-             (ex.: depois de reinstalar o app com um layout novo). -->
-        <receiver
-            android:name=".widget.HarmonicWidgetSmallReceiver"
-            android:label="@string/app_name"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/harmonic_widget_small_info" />
-        </receiver>
-        <receiver
-            android:name=".widget.HarmonicWidgetMediumReceiver"
-            android:label="@string/app_name"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/harmonic_widget_medium_info" />
-        </receiver>
-        <receiver
-            android:name=".widget.HarmonicWidgetLargeReceiver"
-            android:label="@string/app_name"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/harmonic_widget_large_info" />
-        </receiver>
-
     </application>
 </manifest>

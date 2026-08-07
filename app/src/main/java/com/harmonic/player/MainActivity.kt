@@ -20,11 +20,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -165,27 +162,7 @@ class MainActivity : ComponentActivity() {
                                 add(Manifest.permission.POST_NOTIFICATIONS)
                             }
                         }
-                        val permissionsState = rememberMultiplePermissionsState(
-                            permissions = permissions,
-                            // Gatilho mais direto possível pra rodar o
-                            // rescan: dispara na hora que o diálogo do
-                            // sistema fecha, junto com o próprio callback
-                            // de resultado da permissão — não depende de
-                            // esperar uma recomposição notar que um estado
-                            // derivado (audioPermissionGranted) mudou, que
-                            // era o jeito antigo e, aparentemente, às vezes
-                            // demorava (ou nunca chegava a rodar antes da
-                            // tela já ter sido composta com a lista vazia).
-                            onPermissionsResult = { results ->
-                                val granted = results.entries.any {
-                                    (it.key == Manifest.permission.READ_MEDIA_AUDIO ||
-                                     it.key == Manifest.permission.READ_EXTERNAL_STORAGE) && it.value
-                                }
-                                if (granted) {
-                                    app.musicRepository.rescanNow(scope)
-                                }
-                            }
-                        )
+                        val permissionsState = rememberMultiplePermissionsState(permissions)
 
                         val audioPermissionGranted = permissionsState.permissions.any {
                             (it.permission == Manifest.permission.READ_MEDIA_AUDIO ||
@@ -212,48 +189,11 @@ class MainActivity : ComponentActivity() {
                         // Sem isso, a primeira leitura (que roda no
                         // Application.onCreate, antes da permissão existir)
                         // não encontra nada, e só um reinício completo do
-                        // app rodava o scan de novo já com permissão. Isso
-                        // fica como uma segunda camada de segurança além do
-                        // onPermissionsResult acima — redundante na maioria
-                        // das vezes (o Mutex do MusicRepository evita
-                        // qualquer scan duplicado real), mas cobre qualquer
-                        // caso em que o callback acima não tenha disparado.
+                        // app rodava o scan de novo já com permissão.
                         LaunchedEffect(audioPermissionGranted) {
                             if (audioPermissionGranted) {
                                 app.musicRepository.rescanNow(scope)
                             }
-                        }
-
-                        // Terceira camada: cobre especificamente o caso de
-                        // "Não perguntar de novo" — aí a única forma de
-                        // conceder a permissão é abrindo as Configurações
-                        // do app pelo botão da tela de aviso, o que tira o
-                        // app de foco por completo. Nem o callback do
-                        // diálogo (que nem chega a abrir) nem o LaunchedEffect
-                        // acima percebem isso sozinhos de forma confiável,
-                        // já que o app só volta a compor de verdade quando o
-                        // usuário retorna — daí ouvir o ON_RESUME do
-                        // ciclo de vida da Activity.
-                        val lifecycleOwner = LocalLifecycleOwner.current
-                        // rememberUpdatedState é essencial aqui: o
-                        // DisposableEffect abaixo só roda de novo quando
-                        // lifecycleOwner muda (basicamente nunca), então sem
-                        // isso o observer ficaria travado pra sempre com o
-                        // valor de audioPermissionGranted de quando foi
-                        // criado (false, na primeiríssima composição) — e
-                        // nunca perceberia que a permissão foi concedida
-                        // depois.
-                        val currentAudioPermissionGranted by rememberUpdatedState(audioPermissionGranted)
-                        DisposableEffect(lifecycleOwner) {
-                            val observer = LifecycleEventObserver { _, event ->
-                                if (event == Lifecycle.Event.ON_RESUME) {
-                                    if (currentAudioPermissionGranted) {
-                                        app.musicRepository.rescanNow(scope)
-                                    }
-                                }
-                            }
-                            lifecycleOwner.lifecycle.addObserver(observer)
-                            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                         }
 
                         // Se o app foi aberto a partir de "Abrir com" num
