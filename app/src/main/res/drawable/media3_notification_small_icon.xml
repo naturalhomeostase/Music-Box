@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ícone da barra de status pra notificação de reprodução. Precisa ser um
+  desenho chapado (só uma cor, com transparência) — o Android tinge esse
+  desenho automaticamente na cor certa (branco na barra normal, preto em
+  alguns temas claros); um ícone colorido normal (tipo o launcher do app)
+  não é desenhado direito aqui e o sistema pode até deixar de mostrar os
+  botões da notificação corretamente.
+  Media3 detecta esse recurso pelo nome exato "media3_notification_small_icon"
+  e o usa automaticamente no lugar do ícone padrão da biblioteca.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55c-2.21,0 -4,1.79 -4,4s1.79,4 4,4s4,-1.79 4,-4V7h4V3H12z" />
+</vector>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Sem esse arquivo (e a referência a ele no AndroidManifest), o Android
+    Auto nem lista o Music Box como app de mídia disponível no carro — mesmo
+    o MediaSessionService já dando play/pause/anterior/próxima "de graça"
+    pra quem conecta via Bluetooth/fio, o carro só respeita isso depois que
+    o app se declara como app automotivo.
+-->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>

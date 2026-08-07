@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Music Box</string>
+    <string name="notification_channel_playback">Reprodução</string>
+</resources>
