@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone simples de "play" (triângulo), sem depender de emoji do sistema —
+     emoji rendeririam diferente (e meio "amador") dependendo do teclado/SO
+     do aparelho; um vetor fica sempre igual e combina com o resto do app. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,5v14l11,-7z" />
+</vector>

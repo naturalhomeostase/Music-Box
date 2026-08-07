@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Botão principal (play/pause): círculo sólido na cor de destaque do
+     widget — mesma ideia do secundário (chapado, sem bisel falso), só que
+     preenchido em vez de translúcido, pra ficar claro qual é a ação
+     principal à primeira vista. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#FFE0A030" />
+</shape>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Botão secundário (anterior/próxima): círculo "vidro fosco" translúcido,
+     uma única camada só — nada de gradiente/brilho/sombra falsos simulando
+     3D, que é exatamente o que deixava os botões antigos com cara datada. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#33FFFFFF" />
+</shape>
