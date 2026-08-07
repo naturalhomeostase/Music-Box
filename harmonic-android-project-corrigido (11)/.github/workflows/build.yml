@@ -1,0 +1,71 @@
+name: Build APK
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      # Como não versionamos o gradle-wrapper.jar (arquivo binário), geramos
+      # o wrapper aqui usando o Gradle da action antes de compilar.
+      - name: Instalar Gradle e gerar wrapper
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+      - name: Gerar gradle wrapper
+        run: gradle wrapper --gradle-version 8.7
+      - name: Dar permissão ao gradlew
+        run: chmod +x gradlew
+      - name: Compilar APK debug
+        run: ./gradlew assembleDebug --stacktrace
+      - name: Enviar APK como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmonic-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          # Padrão do GitHub é 90 dias — como o projeto itera rápido, os
+          # artefatos antigos ficavam se acumulando até estourar a cota de
+          # armazenamento da conta ("Artifact storage quota has been
+          # hit"), bloqueando builds novas. 7 dias é de sobra pra baixar o
+          # APK depois de uma compilação e ainda assim libera espaço rápido.
+          retention-days: 7
+      # O keystore de release NÃO é mais commitado no repositório (ver
+      # .gitignore) — ele é reconstruído aqui em tempo de build a partir do
+      # secret RELEASE_KEYSTORE_BASE64. Sem isso, os passos de release
+      # abaixo falham ao tentar assinar (arquivo não existe).
+      - name: Reconstruir keystore de release
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystore/release.keystore
+      - name: Compilar APK release
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+      - name: Compilar AAB release
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --stacktrace
+      - name: Enviar APK release como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmonic-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
+      - name: Enviar AAB release como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmonic-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 7
