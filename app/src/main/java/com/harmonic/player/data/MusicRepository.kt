@@ -1,6 +1,8 @@
 package com.harmonic.player.data
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -44,12 +46,20 @@ class MusicRepository(
     // cada um sempre lê o estado mais recente do banco antes de mesclar.
     private val scanMutex = Mutex()
 
+    // Resolução do ano em segundo plano (ver runScan/launchYearFallbackResolution):
+    // guardamos o Job pra nunca ter duas rodadas rodando ao mesmo tempo — se
+    // um re-scan (ex: ContentObserver disparando várias vezes seguidas)
+    // chegar enquanto a rodada anterior ainda está lendo tags de arquivo,
+    // ela simplesmente não dispara outra; a própria consulta busca de novo
+    // "quem ainda está sem ano" no banco, então nada fica de fora.
+    private var yearFallbackJob: Job? = null
+
     fun startObserving(scope: CoroutineScope) {
         if (observingStarted) return
         observingStarted = true
-        scope.launch { runScanSerialized() }
+        scope.launch { runScanSerialized(scope) }
         scanner.observeChanges()
-            .onEach { runScanSerialized() }
+            .onEach { runScanSerialized(scope) }
             .launchIn(scope)
     }
 
@@ -62,12 +72,12 @@ class MusicRepository(
      * concedida — daí a sensação de "preciso reiniciar pra ver as músicas".
      */
     fun rescanNow(scope: CoroutineScope) {
-        scope.launch { runScanSerialized() }
+        scope.launch { runScanSerialized(scope) }
     }
 
-    private suspend fun runScanSerialized() = scanMutex.withLock { runScan() }
+    private suspend fun runScanSerialized(scope: CoroutineScope) = scanMutex.withLock { runScan(scope) }
 
-    private suspend fun runScan() {
+    private suspend fun runScan(scope: CoroutineScope) {
         val ignored = settings.ignoredFolders.first()
         val scanned = scanner.scan(ignoredFolders = ignored)
         if (scanned.isEmpty()) return // provavelmente sem permissão ainda; não apaga nada do banco
@@ -105,6 +115,13 @@ class MusicRepository(
                     album = existing.album,
                     genre = existing.genre,
                     trackNumber = existing.trackNumber,
+                    // O MediaStore não devolve ano pra toda música (ver
+                    // comentário no MediaStoreScanner) — quando o scan
+                    // rápido não achou um agora, preserva o que já tinha
+                    // sido resolvido em segundo plano numa rodada anterior,
+                    // em vez de voltar pra null e precisar reler o arquivo
+                    // de novo à toa a cada re-scan.
+                    year = fresh.year ?: existing.year,
                     isFavorite = existing.isFavorite,
                     playCount = existing.playCount,
                     lastPlayedAt = existing.lastPlayedAt,
@@ -130,5 +147,28 @@ class MusicRepository(
         if (removedIds.isNotEmpty()) dao.deleteByMediaStoreIds(removedIds)
 
         dao.insertAll(merged)
+
+        // A partir daqui as músicas já estão no banco e aparecem na tela
+        // (mesma sensação de "imediato" que a versão anterior tinha). Só
+        // agora, sem segurar essa função, disparamos a leitura mais lenta
+        // (arquivo por arquivo) do ano das que ainda não têm — quando
+        // terminar cada uma, a lista se atualiza sozinha (Flow do Room).
+        launchYearFallbackResolution(scope)
+    }
+
+    /**
+     * Lê o ano direto do arquivo (jaudiotagger) só pras músicas que o
+     * MediaStore não conseguiu preencher — em segundo plano, depois que a
+     * biblioteca já apareceu na tela. Ver comentário em [MediaStoreScanner.toSong].
+     */
+    private fun launchYearFallbackResolution(scope: CoroutineScope) {
+        if (yearFallbackJob?.isActive == true) return
+        yearFallbackJob = scope.launch(Dispatchers.IO) {
+            val pending = dao.getSongsMissingYear()
+            for (song in pending) {
+                val year = scanner.resolveYearFallback(song.path) ?: continue
+                dao.updateSongYear(song.id, year)
+            }
+        }
     }
 }

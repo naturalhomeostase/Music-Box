@@ -94,13 +94,18 @@ class MediaStoreScanner(private val context: Context) {
             // Vorbis Comment. Nesses casos ele nem sempre erra — às vezes
             // simplesmente devolve null pro app inteiro, mesmo a música
             // tendo uma tag de ano perfeitamente válida (foi o caso de uma
-            // música de 1962 que sumia da ordenação por ano). Por isso,
-            // só quando o MediaStore não devolve nada, lemos a tag direto
-            // do arquivo com jaudiotagger (mesma lib já usada em
-            // TagEditor) como fallback — mais lento, mas só roda pras
-            // poucas músicas que realmente precisam.
-            year = getIntOrNull(MediaStore.Audio.Media.YEAR)?.takeIf { it > 0 }
-                ?: readYearFromTagFallback(path),
+            // música de 1962 que sumia da ordenação por ano).
+            //
+            // O fallback (ler a tag direto do arquivo com jaudiotagger) NÃO
+            // roda mais aqui: abrir e parsear cada arquivo é I/O de disco
+            // por música, e rodar isso pra toda música sem ano no meio do
+            // scan principal é o que fazia a biblioteca demorar pra
+            // aparecer depois de instalar o app. Esse scan fica só com o
+            // que o MediaStore já devolve na hora (rápido); o
+            // MusicRepository chama resolveYearFallback() pras músicas que
+            // sobraram sem ano, em segundo plano, depois que a lista já
+            // apareceu na tela.
+            year = getIntOrNull(MediaStore.Audio.Media.YEAR)?.takeIf { it > 0 },
             composer = getStringOrNull(MediaStore.Audio.Media.COMPOSER),
             trackNumber = getIntOrNull(MediaStore.Audio.Media.TRACK),
             durationMs = getLongOrNull(MediaStore.Audio.Media.DURATION) ?: 0,
@@ -123,12 +128,16 @@ class MediaStoreScanner(private val context: Context) {
      * em tags ID3v1 bem antigas, só com 2 dígitos — por isso pegamos os
      * primeiros 4 dígitos consecutivos que aparecerem no valor bruto, em
      * vez de tentar `toIntOrNull()` direto na string inteira.
+     *
+     * Chamado pelo MusicRepository em segundo plano, música por música, só
+     * pras que sobraram sem ano depois do scan rápido — nunca no meio do
+     * scan principal (ver comentário em [toSong]).
      */
-    private fun readYearFromTagFallback(path: String): Int? {
-        return try {
-            val tag = AudioFileIO.read(File(path)).tag ?: return null
+    suspend fun resolveYearFallback(path: String): Int? = withContext(Dispatchers.IO) {
+        try {
+            val tag = AudioFileIO.read(File(path)).tag ?: return@withContext null
             val raw = tag.getFirst(FieldKey.YEAR)?.trim().orEmpty()
-            if (raw.isEmpty()) return null
+            if (raw.isEmpty()) return@withContext null
             Regex("\\d{4}").find(raw)?.value?.toIntOrNull()
         } catch (e: Exception) {
             null

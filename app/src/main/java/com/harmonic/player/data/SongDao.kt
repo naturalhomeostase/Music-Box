@@ -192,6 +192,13 @@ interface SongDao {
     @Query("DELETE FROM songs WHERE mediaStoreId IN (:mediaStoreIds)")
     suspend fun deleteByMediaStoreIds(mediaStoreIds: List<Long>)
 
+    /** Músicas sem ano ainda — candidatas ao fallback de leitura de tag em segundo plano. */
+    @Query("SELECT * FROM songs WHERE year IS NULL")
+    suspend fun getSongsMissingYear(): List<Song>
+
+    @Query("UPDATE songs SET year = :year WHERE id = :songId")
+    suspend fun updateSongYear(songId: Long, year: Int?)
+
     // ---------- Playlists ----------
 
     @Insert

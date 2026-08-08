@@ -21,10 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -99,14 +96,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private var app: HarmonicApp? = null
-
     @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val app = application as HarmonicApp
-        this.app = app
 
         playerController = PlayerController(applicationContext, app.database.songDao(), app.settings)
         playerController.connect()
@@ -255,36 +249,6 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         playerController.persistNow()
         super.onStop()
-    }
-
-    /**
-     * Verificação de permissão totalmente separada do Compose, direto pela
-     * API do Android — não depende de nenhuma sutileza de recomposição.
-     * `onResume()` é SEMPRE chamado pelo sistema quando o usuário volta pro
-     * app depois de fechar o diálogo de permissão (seja aceitando, negando,
-     * ou voltando das Configurações do sistema), então esse é o lugar mais
-     * confiável que existe pra "perceber" que a permissão acabou de ser
-     * concedida — sem depender de estado do Compose ter se atualizado a
-     * tempo.
-     *
-     * Só dispara o rescan enquanto a biblioteca ainda não tiver encontrado
-     * nenhuma música com sucesso — depois disso, o próprio
-     * `scanner.observeChanges()` (registrado uma única vez em
-     * `startObserving`) já cobre mudanças reais no MediaStore, então
-     * escanear de novo a cada vez que o app volta ao primeiro plano seria
-     * trabalho repetido à toa (e mais lento em bibliotecas grandes).
-     */
-    override fun onResume() {
-        super.onResume()
-        val app = this.app ?: return
-        if (app.musicRepository.hasScannedSuccessfully) return
-        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            Manifest.permission.READ_MEDIA_AUDIO
-        else Manifest.permission.READ_EXTERNAL_STORAGE
-        val granted = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        if (granted) {
-            app.musicRepository.rescanNow(lifecycleScope)
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
